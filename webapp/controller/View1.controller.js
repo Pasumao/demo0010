@@ -123,7 +123,7 @@ sap.ui.define([
             }, 0)
         },
 
-        _changeInput(oEvent) {
+        _changeInput(oEvent, oData) {
 
             const getRow = (sPath) => {
                 const index = sPath.substring(sPath.lastIndexOf("/") + 1);
@@ -148,19 +148,26 @@ sap.ui.define([
 
                 while ((match = regex.exec(formula)) !== null) {
                     result.push({
-                        operator: match[1],       // "+" 或 "-"
-                        operand: match[2]         // 如 "C001" 或 "R001"
+                        operator: match[1],
+                        operand: match[2]
                     });
                 }
 
                 return result;
             }
 
-            const newValue = oEvent.getParameter("newValue");
-            const oInput = oEvent.getSource();
-            const sColumn = oInput.getBindingInfo("value").binding.sPath.split('/')[0];
-            const sPath = oInput.getBindingInfo("value").binding.oContext.sPath
-            const sRow = getRow(sPath)
+            let newValue, oInput, sColumn, sPath, sRow;
+            if (oData) {
+                newValue = oData.newValue;
+                sColumn = oData.column;
+                sRow = oData.row
+            } else {
+                newValue = oEvent.getParameter("newValue");
+                oInput = oEvent.getSource();
+                sColumn = oInput.getBindingInfo("value").binding.sPath.split('/')[0];
+                sPath = oInput.getBindingInfo("value").binding.oContext.sPath
+                sRow = getRow(sPath)
+            }
 
             const changeCell = [];
             this._mergeData.forEach(element => {
@@ -195,7 +202,12 @@ sap.ui.define([
                             sum -= Number(value);
                         }
                     })
-                    this.setmodelproperty("tableData", sPath + "/" + cell.COL_ID + "/value", sum);
+                    this.setmodelproperty("tableData", sPath + "/" + cell.COL_ID + "/value", sum, true);
+                    this._changeInput({}, {
+                        newValue: sum,
+                        column: cell.COL_ID,
+                        row: cell.ROW_ID
+                    });
                 } else if (cell.FORMULAT_LEVEL === "ROW") {
                     const aRows = parseFormulaWithOperatorsAndTypes(cell.FORMULAR)
                     const aValues = aRows.map(row => {
@@ -214,7 +226,12 @@ sap.ui.define([
                             sum -= Number(value);
                         }
                     })
-                    this.setmodelproperty("tableData", getPath(cell.ROW_ID) + "/" + sColumn + "/value", sum);
+                    this.setmodelproperty("tableData", getPath(cell.ROW_ID) + "/" + sColumn + "/value", sum, true);
+                    this._changeInput({}, {
+                        newValue: sum,
+                        column: cell.COL_ID,
+                        row: cell.ROW_ID
+                    });
                 }
             })
         },
