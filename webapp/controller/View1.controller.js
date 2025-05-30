@@ -1,6 +1,13 @@
 sap.ui.define([
-    "./CC/Base/BaseController"
-], function (BaseController) {
+    "./CC/Base/BaseController",
+    "aspn/demo/demo0010/controller/CC/Control/xml/Switch",
+    "aspn/demo/demo0010/controller/CC/Control/xml/Case",
+    "aspn/demo/demo0010/controller/CC/Control/xml/Default",
+
+], function (BaseController,
+    Switch,
+    Case,
+    Default) {
     "use strict";
 
     return BaseController.extend("aspn.demo.demo0010.controller.View1", {
@@ -15,7 +22,7 @@ sap.ui.define([
         onAfterRendering: async function () {
             const Username = "ZASGR";
             const Password = "NVAicKrdiijdaUXrFPg3(kzuiaVpEqXDbBytXiWt";
-            const req = await fetch("http://localhost:8080/sap/bc/http/sap/zasgr_http_api?IF_NAME=8000&IF_MODE=POST", {
+            const req = await fetch("/sap/bc/http/sap/zasgr_http_api?IF_NAME=8000&IF_MODE=POST", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -50,6 +57,8 @@ sap.ui.define([
                 }
             });
 
+            this._mergeData = data.TO_FORMULAR;
+
             aColumns.sort((a, b) => {
                 const numA = parseInt(a.RC_ID.substring(1), 10);
                 const numB = parseInt(b.RC_ID.substring(1), 10);
@@ -62,34 +71,56 @@ sap.ui.define([
                 return numA - numB;
             });
 
-            this._mergeData = data.TO_FORMULAR;
-
             const oTable = this.byId("idTable")
             aColumns.forEach(cloumn => {
                 oTable.addColumn(new sap.ui.table.Column({
                     label: new sap.m.Label({ text: cloumn.TEXT }),
-                    template: cloumn.RC_ID === "C000"
-                        ? new sap.m.Text({ text: `{tableData>${cloumn.RC_ID}}` })
-                        : new sap.m.Input({
-                            value: `{tableData>${cloumn.RC_ID}}`,
-                            liveChange: this._changeInput.bind(this),
-                            type: sap.m.InputType.Number
-                        })
+                    customData: [new sap.ui.core.CustomData({
+                        key: "minWidth",
+                        value: "180px"
+                    })],
+                    template: new Switch({
+                        value: `{tableData>${cloumn.RC_ID}/sum}`,
+                        content: [
+                            new Case({
+                                value: false,
+                                content: new sap.m.Input({
+                                    value: `{tableData>${cloumn.RC_ID}/value}`,
+                                    liveChange: this._changeInput.bind(this),
+                                    type: sap.m.InputType.Number
+                                })
+                            }),
+                            new Default({
+                                content: new sap.m.Text({
+                                    text: `{tableData>${cloumn.RC_ID}/value}`
+                                })
+                            })
+                        ]
+                    })
                 }))
             })
 
+            const isSumCell = (cloumn, row) => {
+                return data.TO_FORMULAR.some(item => {
+                    return item.COL_ID === cloumn && item.ROW_ID === row;
+                })
+            }
+
             this.setmodeldata("tableData", aRows.map(row => {
-                return {
-                    "C000": row.TEXT
-                }
+                let oRow = {};
+                aColumns.forEach(c => {
+                    if (c.RC_ID === "C000") {
+                        oRow[c.RC_ID] = { value: row.TEXT, sum: true };
+                    } else {
+                        oRow[c.RC_ID] = { sum: isSumCell(c.RC_ID, row.RC_ID) }
+                    }
+                })
+                return oRow
             }))
 
             setTimeout(() => {
                 this.__autoWidthTable(oTable)
             }, 0)
-
-
-
         },
 
         _changeInput(oEvent) {
@@ -104,9 +135,30 @@ sap.ui.define([
                 return "/" + (parseInt(sRow.substring(1), 10) - 1);
             }
 
+            const parseFormulaWithOperatorsAndTypes = function (formula) {
+                // 如果以字母开头没有操作符，补上默认的 '+'
+                if (!/^[-+]/.test(formula)) {
+                    formula = "+" + formula;
+                }
+
+                // 正则表达式：匹配 (+|-)(C|R)\d{3}
+                const regex = /([+-])([CR]\d{3})/g;
+                const result = [];
+                let match;
+
+                while ((match = regex.exec(formula)) !== null) {
+                    result.push({
+                        operator: match[1],       // "+" 或 "-"
+                        operand: match[2]         // 如 "C001" 或 "R001"
+                    });
+                }
+
+                return result;
+            }
+
             const newValue = oEvent.getParameter("newValue");
             const oInput = oEvent.getSource();
-            const sColumn = oInput.getBindingInfo("value").binding.sPath;
+            const sColumn = oInput.getBindingInfo("value").binding.sPath.split('/')[0];
             const sPath = oInput.getBindingInfo("value").binding.oContext.sPath
             const sRow = getRow(sPath)
 
@@ -126,35 +178,43 @@ sap.ui.define([
             changeCell.forEach(cell => {
                 if (cell.FORMULAT_LEVEL === "COL") {
                     const sPath = getPath(cell.ROW_ID)
-                    const aColumns = cell.FORMULAR.split("+");
+                    const aColumns = parseFormulaWithOperatorsAndTypes(cell.FORMULAR)
                     const aValues = aColumns.map(column => {
-                        if (column === sColumn && cell.ROW_ID === sRow) {
+                        if (column.operand === sColumn && cell.ROW_ID === sRow) {
                             return newValue;
                         } else {
-                            const data = this.getmodelproperty("tableData", sPath + "/" + column)
+                            const data = this.getmodelproperty("tableData", sPath + "/" + column.operand + "/value")
                             return data === undefined ? 0 : data;
                         }
                     });
                     let sum = 0;
-                    aValues.forEach(value => {
-                        sum += Number(value);
+                    aValues.forEach((value, index) => {
+                        if (aColumns[index].operator === "+") {
+                            sum += Number(value);
+                        } else if (aColumns[index].operator === "-") {
+                            sum -= Number(value);
+                        }
                     })
-                    this.setmodelproperty("tableData", sPath + "/" + cell.COL_ID, sum);
+                    this.setmodelproperty("tableData", sPath + "/" + cell.COL_ID + "/value", sum);
                 } else if (cell.FORMULAT_LEVEL === "ROW") {
-                    const aColumns = cell.FORMULAR.split("+");
-                    const aValues = aColumns.map(row => {
-                        if (row === sRow && cell.COL_ID === sColumn) {
+                    const aRows = parseFormulaWithOperatorsAndTypes(cell.FORMULAR)
+                    const aValues = aRows.map(row => {
+                        if (row.operand === sRow && cell.COL_ID === sColumn) {
                             return newValue;
                         } else {
-                            const data = this.getmodelproperty("tableData", getPath(row) + "/" + sColumn)
+                            const data = this.getmodelproperty("tableData", getPath(row.operand) + "/" + sColumn + "/value")
                             return data === undefined ? 0 : data;
                         }
                     });
                     let sum = 0;
-                    aValues.forEach(value => {
-                        sum += Number(value);
+                    aValues.forEach((value, index) => {
+                        if (aRows[index].operator === "+") {
+                            sum += Number(value);
+                        } else if (aRows[index].operator === "-") {
+                            sum -= Number(value);
+                        }
                     })
-                    this.setmodelproperty("tableData", getPath(cell.ROW_ID) + "/" + sColumn, sum);
+                    this.setmodelproperty("tableData", getPath(cell.ROW_ID) + "/" + sColumn + "/value", sum);
                 }
             })
         },
