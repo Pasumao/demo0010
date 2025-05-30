@@ -1,7 +1,15 @@
-<mvc:View controllerName="aspn.demo.demo0010.controller.View1"
+<mvc:View xmlns:table="sap.ui.table" controllerName="aspn.demo.demo0010.controller.View1"
     xmlns:mvc="sap.ui.core.mvc" displayBlock="true"
     xmlns="sap.m">
     <Page id="page" title="{i18n>title}">
-        <content />
+        <content>
+            <table:Table 
+                id="idTable" 
+                rows="{tableData>/}" 
+                selectionMode="None"
+                rowMode="Auto">
+
+            </table:Table>
+        </content>
     </Page>
 </mvc:View>
